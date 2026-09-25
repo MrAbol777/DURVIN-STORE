@@ -1,0 +1,167 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrderStatus {
+  pending
+  paid
+  processing
+  shipped
+  completed
+  cancelled
+}
+
+enum PaymentStatus {
+  pending
+  successful
+  failed
+  cancelled
+}
+
+model Admin {
+  id           String   @id @default(cuid())
+  username     String   @unique @db.VarChar(191)
+  passwordHash String   @db.VarChar(255)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("admins")
+}
+
+model Customer {
+  id           String   @id @default(cuid())
+  firstName    String   @db.VarChar(100)
+  lastName     String   @db.VarChar(100)
+  mobile       String   @unique @db.VarChar(32)
+  passwordHash String   @db.VarChar(255)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  orders       Order[]
+
+  @@map("customers")
+}
+
+model Category {
+  id            String   @id @default(cuid())
+  name          String   @db.VarChar(191)
+  slug          String   @unique @db.VarChar(191)
+  description   String?  @db.Text
+  imageUrl      String?  @db.VarChar(2048)
+  imagePosition String?  @db.VarChar(100)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  products      Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id                  String         @id @default(cuid())
+  sku                 String         @unique @db.VarChar(191)
+  name                String         @db.VarChar(191)
+  slug                String         @unique @db.VarChar(191)
+  shortDescription    String?        @db.VarChar(500)
+  description         String?        @db.LongText
+  attributes          Json?
+  priceRials          BigInt
+  compareAtPriceRials BigInt?
+  stockQuantity       Int            @default(0)
+  isPublished         Boolean        @default(true)
+  categoryId          String
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  category            Category       @relation(fields: [categoryId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  images              ProductImage[]
+  orderItems          OrderItem[]
+
+  @@index([categoryId, isPublished])
+  @@index([isPublished, createdAt])
+  @@map("products")
+}
+
+model ProductImage {
+  id        String   @id @default(cuid())
+  productId String
+  url       String   @db.VarChar(2048)
+  alt       String?  @db.VarChar(255)
+  position  String?  @db.VarChar(100)
+  sortOrder Int      @default(0)
+  isPrimary Boolean  @default(false)
+  mimeType  String?  @db.VarChar(100)
+  fileSize  Int?
+  createdAt DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([productId, sortOrder])
+  @@map("product_images")
+}
+
+model Order {
+  id             String      @id @default(cuid())
+  orderNumber    String      @unique @db.VarChar(191)
+  trackingCode   String?     @unique @db.VarChar(191)
+  idempotencyKey String?     @unique @db.VarChar(191)
+  customerId     String?
+  firstName     String      @db.VarChar(100)
+  lastName      String      @db.VarChar(100)
+  mobile        String      @db.VarChar(32)
+  province      String      @db.VarChar(100)
+  city          String      @db.VarChar(100)
+  address       String      @db.LongText
+  postalCode    String      @db.VarChar(20)
+  notes         String?     @db.Text
+  subtotalRials BigInt
+  discountRials BigInt      @default(0)
+  shippingRials BigInt      @default(0)
+  totalRials    BigInt
+  status        OrderStatus @default(pending)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  customer      Customer?   @relation(fields: [customerId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  items         OrderItem[]
+  payments      Payment[]
+
+  @@index([status, createdAt])
+  @@index([mobile])
+  @@index([customerId, createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id             String   @id @default(cuid())
+  orderId        String
+  productId      String?
+  productName    String   @db.VarChar(191)
+  productSku     String   @db.VarChar(191)
+  unitPriceRials BigInt
+  quantity       Int
+  lineTotalRials BigInt   @default(0)
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  product        Product? @relation(fields: [productId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+model Payment {
+  id                   String        @id @default(cuid())
+  orderId              String
+  provider             String        @db.VarChar(100)
+  status               PaymentStatus @default(pending)
+  amountRials          BigInt
+  transactionReference String?       @unique @db.VarChar(191)
+  callbackPayload      Json?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  order                Order         @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([orderId, status])
+  @@map("payments")
+}
